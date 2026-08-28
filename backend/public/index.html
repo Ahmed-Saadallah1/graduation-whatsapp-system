@@ -370,27 +370,47 @@
 </header>
 
 <nav>
-  <button class="tab-btn active" data-view="import">Import</button>
+  <button class="tab-btn active" data-view="sheet">Sheet</button>
   <button class="tab-btn" data-view="settings">Settings</button>
   <button class="tab-btn" data-view="ushers">Ushers</button>
+  <button class="tab-btn" data-view="whatsapp">WhatsApp</button>
   <button class="tab-btn" data-view="activity">Activity</button>
 </nav>
 
 <main>
 
-  <!-- IMPORT -->
-  <section class="view active" id="view-import">
+  <!-- SHEET -->
+  <section class="view active" id="view-sheet">
     <div class="panel">
-      <h2>Import your sheet</h2>
-      <p class="sub">Drop your real spreadsheet here to preview its structure and auto-fill the column mapping — this doesn't upload data anywhere or replace the live Google Sheet, it just reads the layout. For best results, use a file with two tabs named exactly <code>L</code> and <code>R</code>.</p>
+      <h2>Live Google Sheet</h2>
+      <p class="sub">Paste the link to the sheet you're tracking, and type in the exact names of its two tabs (bottom of the sheet) once you know them. Nothing is uploaded — this reads the sheet live.</p>
 
-      <div class="dropzone" id="dropzone">
-        <div class="dropzone-icon">📄</div>
-        <div class="dropzone-text">Drag a .xlsx or .csv file here, or click to browse</div>
-        <input type="file" id="fileInput" accept=".xlsx,.xls,.csv" style="display:none;" />
+      <div style="margin-bottom:14px;">
+        <label style="display:block; font-size:11px; color:var(--muted); margin-bottom:4px; font-family:var(--mono);">Google Sheet link</label>
+        <input id="sheetUrlInput" placeholder="https://docs.google.com/spreadsheets/d/…/edit" />
       </div>
 
-      <div id="importResults"></div>
+      <div class="tab-config">
+        <div class="tab-config-block">
+          <h3><span class="side-chip">L</span> Left tab</h3>
+          <label style="display:block; font-size:11px; color:var(--muted); margin-bottom:4px; font-family:var(--mono);">Exact tab name in the sheet</label>
+          <input id="sheetTabNameL" placeholder="e.g. L" />
+        </div>
+        <div class="tab-config-block">
+          <h3><span class="side-chip">R</span> Right tab</h3>
+          <label style="display:block; font-size:11px; color:var(--muted); margin-bottom:4px; font-family:var(--mono);">Exact tab name in the sheet</label>
+          <input id="sheetTabNameR" placeholder="e.g. R" />
+        </div>
+      </div>
+
+      <p class="sub" style="margin-top:14px;">Sharing on the Sheet must be set to <strong>"Anyone with the link — Viewer"</strong> for the test/preview below to work. (Live tracking during the event still goes through your Apps Script trigger, same as before.)</p>
+
+      <div class="save-row" style="justify-content:space-between;">
+        <button class="ghost" onclick="testSheetConnection()">Test connection</button>
+        <button class="primary" onclick="saveSheetSettings()">Save</button>
+      </div>
+
+      <div id="sheetTestResults"></div>
     </div>
   </section>
 
@@ -437,6 +457,31 @@
     </div>
   </section>
 
+  <!-- WHATSAPP -->
+  <section class="view" id="view-whatsapp">
+    <div class="panel">
+      <h2>WhatsApp linking</h2>
+      <p class="sub">Your default number stays linked between runs — the session is saved locally, so you normally won't need to scan anything again. Use this tab only for the <strong>first link</strong>, or as <strong>Plan B</strong> if you need to switch numbers or recover from a disconnect during the event.</p>
+
+      <div id="waConnectedBlock" style="display:none;">
+        <div class="status-pill" style="font-size:14px; margin-bottom:16px;">
+          <span class="dot on"></span>
+          <span>Connected as <strong id="waLinkedNumber"></strong></span>
+        </div>
+        <button class="ghost" onclick="relinkWhatsApp()">Relink a different number (Plan B)</button>
+      </div>
+
+      <div id="waQrBlock" style="display:none; text-align:center;">
+        <p class="sub">Scan this with <strong>WhatsApp → Linked Devices → Link a Device</strong> on the phone number you want to use:</p>
+        <div id="waQrCanvas" style="display:inline-block; padding:14px; background:#fff; border:1px solid var(--line); border-radius:6px;"></div>
+      </div>
+
+      <div id="waWaitingBlock" style="display:none;">
+        <p class="sub">Waiting for the backend to generate a QR code…</p>
+      </div>
+    </div>
+  </section>
+
   <!-- ACTIVITY -->
   <section class="view" id="view-activity">
     <div class="panel">
@@ -451,6 +496,7 @@
 
 <div class="toast" id="toast"></div>
 
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <script>
 const SIDES = ['L', 'R'];
 
@@ -508,8 +554,9 @@ async function loadSettings() {
     const cfg = settings.sheetTabs[side] || {};
     const block = document.createElement('div');
     block.className = 'tab-config-block';
+    const tabLabel = cfg.sheetTabName ? `"${cfg.sheetTabName}"` : '(not set — see Sheet tab)';
     block.innerHTML = `
-      <h3><span class="side-chip">${side}</span> Tab "${side}"</h3>
+      <h3><span class="side-chip">${side}</span> ${tabLabel}</h3>
       ${FIELD_LABELS.map(([key, label]) => `
         <div style="margin-bottom:10px;">
           <label>${label}</label>
@@ -522,8 +569,7 @@ async function loadSettings() {
 }
 
 async function saveSettings() {
-  const settings = { sheetTabs: {} };
-  SIDES.forEach(side => { settings.sheetTabs[side] = {}; });
+  const settings = await (await fetch('/api/settings')).json();
   document.querySelectorAll('#tabConfigContainer input').forEach(input => {
     settings.sheetTabs[input.dataset.side][input.dataset.field] = input.value.trim().toUpperCase();
   });
@@ -602,7 +648,7 @@ async function loadActivity() {
   `).join('');
 }
 
-// ---------- Import ----------
+// ---------- Sheet (live Google Sheet link + tab names) ----------
 const FIELD_OPTIONS = [
   ['', '— Not used —'],
   ['serialCol', 'Serial'],
@@ -612,62 +658,72 @@ const FIELD_OPTIONS = [
   ['phoneCol', 'Phone (trigger)'],
 ];
 
-const dropzone = document.getElementById('dropzone');
-const fileInput = document.getElementById('fileInput');
+async function loadSheetSettings() {
+  const settings = await (await fetch('/api/settings')).json();
+  document.getElementById('sheetUrlInput').value = settings.sheetUrl || '';
+  document.getElementById('sheetTabNameL').value = settings.sheetTabs.L.sheetTabName || '';
+  document.getElementById('sheetTabNameR').value = settings.sheetTabs.R.sheetTabName || '';
+}
 
-dropzone.addEventListener('click', () => fileInput.click());
-dropzone.addEventListener('dragover', e => { e.preventDefault(); dropzone.classList.add('dragover'); });
-dropzone.addEventListener('dragleave', () => dropzone.classList.remove('dragover'));
-dropzone.addEventListener('drop', e => {
-  e.preventDefault();
-  dropzone.classList.remove('dragover');
-  if (e.dataTransfer.files.length) handleImportFile(e.dataTransfer.files[0]);
-});
-fileInput.addEventListener('change', () => {
-  if (fileInput.files.length) handleImportFile(fileInput.files[0]);
-});
+function currentSheetFormValues() {
+  return {
+    sheetUrl: document.getElementById('sheetUrlInput').value.trim(),
+    tabs: {
+      L: { sheetTabName: document.getElementById('sheetTabNameL').value.trim() },
+      R: { sheetTabName: document.getElementById('sheetTabNameR').value.trim() },
+    },
+  };
+}
 
-async function handleImportFile(file) {
-  const resultsEl = document.getElementById('importResults');
-  resultsEl.innerHTML = '<p class="sub">Reading file…</p>';
+async function saveSheetSettings() {
+  const form = currentSheetFormValues();
+  const settings = await (await fetch('/api/settings')).json();
+  settings.sheetUrl = form.sheetUrl;
+  settings.sheetTabs.L.sheetTabName = form.tabs.L.sheetTabName;
+  settings.sheetTabs.R.sheetTabName = form.tabs.R.sheetTabName;
+  await fetch('/api/settings', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(settings),
+  });
+  showToast('Sheet settings saved');
+  loadSettings(); // refresh the tab-name labels shown on the Settings view
+}
 
-  const formData = new FormData();
-  formData.append('file', file);
+async function testSheetConnection() {
+  const resultsEl = document.getElementById('sheetTestResults');
+  const form = currentSheetFormValues();
+  if (!form.sheetUrl) { showToast('Paste the Sheet link first'); return; }
+  resultsEl.innerHTML = '<p class="sub" style="margin-top:14px;">Checking the sheet…</p>';
 
   try {
-    const res = await fetch('/api/import', { method: 'POST', body: formData });
+    const res = await fetch('/api/sheet/test', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(form),
+    });
     const data = await res.json();
-
     if (!res.ok) {
-      resultsEl.innerHTML = `<div class="import-error">${data.error || 'Could not read that file.'}</div>`;
+      resultsEl.innerHTML = `<div class="import-error" style="margin-top:14px;">${data.error || 'Could not test the sheet.'}</div>`;
       return;
     }
-
-    renderImportResults(data);
+    renderSheetTestResults(data.results);
   } catch (err) {
-    resultsEl.innerHTML = `<div class="import-error">Upload failed: ${err.message}</div>`;
+    resultsEl.innerHTML = `<div class="import-error" style="margin-top:14px;">Test failed: ${err.message}</div>`;
   }
 }
 
-function renderImportResults(data) {
-  const resultsEl = document.getElementById('importResults');
-  const tabs = Object.keys(data.detectedTabs || {});
-
-  if (!tabs.length) {
-    let msg = `No tabs named "L" or "R" were found in <strong>${data.fileName}</strong>.`;
-    if (data.otherSheetNames && data.otherSheetNames.length) {
-      msg += ` Found instead: ${data.otherSheetNames.map(n => `<code>${n}</code>`).join(', ')}. Rename the relevant tabs to exactly <code>L</code> and <code>R</code> and try again.`;
+function renderSheetTestResults(results) {
+  const resultsEl = document.getElementById('sheetTestResults');
+  resultsEl.innerHTML = SIDES.map(side => {
+    const r = results[side];
+    if (!r || !r.ok) {
+      return `<div class="import-error" style="margin-top:14px;"><span class="side-chip">${side}</span> ${r ? r.error : 'No result'}</div>`;
     }
-    resultsEl.innerHTML = `<div class="import-error">${msg}</div>`;
-    return;
-  }
-
-  resultsEl.innerHTML = tabs.map(side => {
-    const tab = data.detectedTabs[side];
     const mappingRows = FIELD_OPTIONS.filter(([key]) => key).map(([key, label]) => {
-      const suggestedCol = tab.suggestedMapping[key] || '';
-      const optionsHtml = tab.headers.map((header, i) => {
-        const colLetter = String.fromCharCode(65 + i); // fine up to column Z for preview purposes
+      const suggestedCol = r.suggestedMapping[key] || '';
+      const optionsHtml = r.headers.map((header, i) => {
+        const colLetter = String.fromCharCode(65 + i);
         const selected = colLetter === suggestedCol ? 'selected' : '';
         return `<option value="${colLetter}" ${selected}>${colLetter} — "${header}"</option>`;
       }).join('');
@@ -682,33 +738,32 @@ function renderImportResults(data) {
       `;
     }).join('');
 
-    const previewRows = tab.sampleRows.slice(0, 3).map(row =>
-      `<tr>${tab.headers.map((_, i) => `<td>${row[i] ?? ''}</td>`).join('')}</tr>`
+    const previewRows = r.sampleRows.slice(0, 3).map(row =>
+      `<tr>${r.headers.map((_, i) => `<td>${row[i] ?? ''}</td>`).join('')}</tr>`
     ).join('');
 
     return `
       <div class="import-tab-card" data-tab-card="${side}">
-        <h3><span class="side-chip">${side}</span> Tab "${side}" detected</h3>
-        <p class="row-count">${tab.rowCount} data row${tab.rowCount === 1 ? '' : 's'} found</p>
+        <h3><span class="side-chip">${side}</span> "${r.tabName}" — connected ✓</h3>
+        <p class="row-count">${r.rowCount} data row${r.rowCount === 1 ? '' : 's'} found</p>
         <div class="mapping-grid">${mappingRows}</div>
         <div class="preview-table-wrap">
           <table>
-            <thead><tr>${tab.headers.map(h => `<th>${h}</th>`).join('')}</tr></thead>
+            <thead><tr>${r.headers.map(h => `<th>${h}</th>`).join('')}</tr></thead>
             <tbody>${previewRows}</tbody>
           </table>
         </div>
         <div class="apply-row">
-          <button class="primary" onclick="applyImportMapping('${side}')">Apply to Settings</button>
+          <button class="primary" onclick="applySheetMapping('${side}')">Apply to Settings</button>
         </div>
       </div>
     `;
   }).join('');
 }
 
-async function applyImportMapping(side) {
+async function applySheetMapping(side) {
   const card = document.querySelector(`[data-tab-card="${side}"]`);
   const settings = await (await fetch('/api/settings')).json();
-  if (!settings.sheetTabs[side]) settings.sheetTabs[side] = {};
 
   card.querySelectorAll('select').forEach(select => {
     settings.sheetTabs[side][select.dataset.field] = select.value;
@@ -720,17 +775,65 @@ async function applyImportMapping(side) {
     body: JSON.stringify(settings),
   });
 
-  showToast(`Settings updated for tab "${side}"`);
+  showToast(`Column mapping applied for tab "${side}"`);
   loadSettings();
+}
+
+// ---------- WhatsApp linking (QR + Plan B relink) ----------
+let waQrRendered = null; // last QR string we've drawn, so we don't redraw needlessly
+
+async function refreshWhatsAppTab() {
+  const connectedBlock = document.getElementById('waConnectedBlock');
+  const qrBlock = document.getElementById('waQrBlock');
+  const waitingBlock = document.getElementById('waWaitingBlock');
+
+  try {
+    const res = await fetch('/api/whatsapp/status');
+    const data = await res.json();
+
+    if (data.connected) {
+      connectedBlock.style.display = 'block';
+      qrBlock.style.display = 'none';
+      waitingBlock.style.display = 'none';
+      document.getElementById('waLinkedNumber').textContent = data.linkedNumber ? '+' + data.linkedNumber : 'unknown number';
+      waQrRendered = null;
+    } else if (data.qr) {
+      connectedBlock.style.display = 'none';
+      waitingBlock.style.display = 'none';
+      qrBlock.style.display = 'block';
+      if (data.qr !== waQrRendered) {
+        const canvas = document.getElementById('waQrCanvas');
+        canvas.innerHTML = '';
+        new QRCode(canvas, { text: data.qr, width: 240, height: 240 });
+        waQrRendered = data.qr;
+      }
+    } else {
+      connectedBlock.style.display = 'none';
+      qrBlock.style.display = 'none';
+      waitingBlock.style.display = 'block';
+      waQrRendered = null;
+    }
+  } catch {
+    // backend unreachable - status pill at the top already reflects this
+  }
+}
+
+async function relinkWhatsApp() {
+  await fetch('/api/whatsapp/relink', { method: 'POST' });
+  showToast('Generating a new QR code…');
+  refreshWhatsAppTab();
 }
 
 // ---------- Init ----------
 loadSettings();
+loadSheetSettings();
 loadUshers();
 loadActivity();
 refreshStatus();
+refreshWhatsAppTab();
 setInterval(refreshStatus, 5000);
 setInterval(loadActivity, 4000);
+setInterval(refreshWhatsAppTab, 3000);
 </script>
 
 </body>

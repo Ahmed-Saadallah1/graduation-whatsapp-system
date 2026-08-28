@@ -1,4 +1,4 @@
-﻿/**
+/**
  * GRADUATION SEATING -> WHATSAPP NOTIFIER
  * Apps Script (v2 - thin forwarder)
  * ------------------------------------------------------------
@@ -86,7 +86,9 @@ function handleEdit(e) {
   try {
     const sheet = e.range.getSheet();
     const tabName = sheet.getName();
-    if (tabName !== 'L' && tabName !== 'R') return;
+    // No hardcoded tab names here - the backend dashboard's "Sheet" tab holds
+    // the real tab names you type in, and matches this edit against them.
+    // Any tab that doesn't match either configured name is simply ignored.
     if (e.range.getNumRows() !== 1 || e.range.getNumColumns() !== 1) return;
 
     const row = e.range.getRow();

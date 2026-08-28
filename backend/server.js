@@ -10,10 +10,9 @@
  * WhatsApp > Linked Devices. The session is saved in ./auth afterward.
  */
 
+const fs = require('fs');
 const path = require('path');
 const express = require('express');
-const multer = require('multer');
-const XLSX = require('xlsx');
 const { default: makeWASocket, useMultiFileAuthState, DisconnectReason } = require('@whiskeysockets/baileys');
 const qrcode = require('qrcode-terminal');
 const pino = require('pino');
@@ -22,14 +21,16 @@ const store = require('./store');
 const logic = require('./logic');
 
 const PORT = process.env.PORT || 3000;
+const AUTH_DIR = path.join(__dirname, 'auth');
 const app = express();
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
-const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 15 * 1024 * 1024 } });
-
 let sock;
 let isReady = false;
+let currentQR = null;      // raw QR payload string while waiting to be scanned
+let linkedNumber = null;   // the WhatsApp number currently linked, once connected
+let relinking = false;     // true while we've intentionally logged out to force a fresh QR
 
 // --- Send queue: paces messages so bursts don't look like spam ---
 const queue = [];
@@ -75,17 +76,22 @@ async function startWhatsApp() {
     sock.ev.on('connection.update', (update) => {
       const { connection, lastDisconnect, qr } = update;
       if (qr) {
-        console.log('\nScan this QR code with WhatsApp > Linked Devices:\n');
+        currentQR = qr;
+        console.log('\nScan this QR code with WhatsApp > Linked Devices (or use the "WhatsApp" tab in the dashboard):\n');
         qrcode.generate(qr, { small: true });
       }
       if (connection === 'open') {
         isReady = true;
-        console.log('✅ WhatsApp connected and ready.');
+        relinking = false;
+        currentQR = null;
+        linkedNumber = sock.user?.id ? sock.user.id.split(':')[0].split('@')[0] : null;
+        console.log('✅ WhatsApp connected and ready.' + (linkedNumber ? ` (linked number: +${linkedNumber})` : ''));
       }
       if (connection === 'close') {
         isReady = false;
+        linkedNumber = null;
         const shouldReconnect = lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut;
-        console.log('Connection closed.', shouldReconnect ? 'Reconnecting...' : 'Logged out - delete ./auth and restart to relink.');
+        console.log('Connection closed.', shouldReconnect ? 'Reconnecting...' : 'Logged out - scan a new QR code (dashboard "WhatsApp" tab) to relink.');
         if (shouldReconnect) setTimeout(startWhatsApp, 3000);
       }
     });
@@ -98,6 +104,28 @@ async function startWhatsApp() {
     console.log('Retrying in 5 seconds... (dashboard and API remain available)');
     setTimeout(startWhatsApp, 5000);
   }
+}
+
+/**
+ * Forces a fresh QR code, e.g. to link a different number as a Plan B during
+ * the event, or if the current session gets logged out unexpectedly.
+ * Logs out the current session (if any), wipes the saved auth, and restarts
+ * the connection so a brand-new QR is generated.
+ */
+async function relinkWhatsApp() {
+  relinking = true;
+  isReady = false;
+  currentQR = null;
+  linkedNumber = null;
+  try {
+    if (sock) await sock.logout().catch(() => {});
+  } catch { /* ignore - we're wiping the session anyway */ }
+  try {
+    if (fs.existsSync(AUTH_DIR)) fs.rmSync(AUTH_DIR, { recursive: true, force: true });
+  } catch (err) {
+    console.error('Could not clear auth folder:', err.message);
+  }
+  startWhatsApp();
 }
 
 // ============================================================
@@ -172,25 +200,52 @@ app.delete('/api/ushers/:id', (req, res) => {
 });
 
 // ============================================================
-// DASHBOARD API - Import (drag-and-drop sheet preview)
+// DASHBOARD API - Live Google Sheet test/preview
 // ============================================================
-// Parses an uploaded .xlsx or .csv file so the dashboard can preview its
-// structure and suggest a column mapping - this never touches the live
-// Google Sheet. It's purely a convenience to fill in Settings correctly.
-app.post('/api/import', upload.single('file'), (req, res) => {
+// Reads the *live* Google Sheet directly (no upload, no file) so the
+// dashboard can confirm the link + tab names are right and suggest a column
+// mapping, just before the event when you finally know the real tab names.
+// Requires the Sheet's sharing to be set to "Anyone with the link - Viewer".
+app.post('/api/sheet/test', async (req, res) => {
   try {
-    if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+    const { sheetUrl, tabs } = req.body || {};
+    const sheetId = logic.extractSheetId(sheetUrl);
+    if (!sheetId) {
+      return res.status(400).json({ error: 'That does not look like a Google Sheets link. Copy the full URL from your browser\'s address bar.' });
+    }
 
-    const workbook = XLSX.read(req.file.buffer, { type: 'buffer' });
-    const detectedTabs = {};
-    const otherSheetNames = [];
+    const sides = ['L', 'R'];
+    const results = {};
 
-    workbook.SheetNames.forEach(sheetName => {
-      const normalized = sheetName.trim().toUpperCase();
-      const rows = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], { header: 1, defval: '' });
-      if (!rows.length) return;
-
-      if (normalized === 'L' || normalized === 'R') {
+    for (const side of sides) {
+      const tabName = (tabs && tabs[side] && tabs[side].sheetTabName || '').trim();
+      if (!tabName) {
+        results[side] = { ok: false, error: 'No tab name entered yet for this side.' };
+        continue;
+      }
+      const csvUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(tabName)}`;
+      try {
+        const resp = await fetch(csvUrl);
+        if (!resp.ok) {
+          results[side] = {
+            ok: false,
+            error: resp.status === 400
+              ? `No tab named "${tabName}" was found in this sheet.`
+              : `Could not reach the sheet (HTTP ${resp.status}). Make sure sharing is set to "Anyone with the link - Viewer".`,
+          };
+          continue;
+        }
+        const text = await resp.text();
+        // A private/unreachable sheet still returns 200 with an HTML error page.
+        if (/^\s*<HTML/i.test(text)) {
+          results[side] = { ok: false, error: 'Sheet is not accessible. Set sharing to "Anyone with the link - Viewer" and try again.' };
+          continue;
+        }
+        const rows = logic.parseCsv(text);
+        if (!rows.length) {
+          results[side] = { ok: false, error: `Tab "${tabName}" was found but looks empty.` };
+          continue;
+        }
         const headers = rows[0];
         const sampleRows = rows.slice(1, 6);
         const suggestedMapping = {};
@@ -200,17 +255,31 @@ app.post('/api/import', upload.single('file'), (req, res) => {
             suggestedMapping[field] = logic.indexToColumnLetter(i);
           }
         });
-        detectedTabs[normalized] = { headers, sampleRows, suggestedMapping, rowCount: rows.length - 1 };
-      } else {
-        otherSheetNames.push(sheetName);
+        results[side] = { ok: true, tabName, headers, sampleRows, suggestedMapping, rowCount: rows.length - 1 };
+      } catch (err) {
+        results[side] = { ok: false, error: `Could not reach Google Sheets: ${err.message}` };
       }
-    });
+    }
 
-    res.json({ detectedTabs, otherSheetNames, fileName: req.file.originalname });
+    res.json({ sheetId, results });
   } catch (err) {
     console.error(err);
-    res.status(400).json({ error: 'Could not read that file. Make sure it is a valid .xlsx or .csv file.' });
+    res.status(500).json({ error: 'Unexpected error testing the sheet.' });
   }
+});
+
+// ============================================================
+// DASHBOARD API - WhatsApp linking (QR + Plan B relink)
+// ============================================================
+app.get('/api/whatsapp/status', (req, res) => {
+  res.json({ connected: isReady, linkedNumber, qr: currentQR, relinking });
+});
+
+// Forces a brand-new QR code - use this to link a different number during
+// the event (Plan B) or to recover from an unexpected logout.
+app.post('/api/whatsapp/relink', async (req, res) => {
+  relinkWhatsApp();
+  res.json({ status: 'relinking' });
 });
 
 // ============================================================
@@ -235,10 +304,12 @@ app.post('/api/sheet-edit', (req, res) => {
     }
 
     const settings = store.getSettings();
-    const tabConfig = settings.sheetTabs[tab];
-    if (!tabConfig) {
-      return res.json({ status: 'ignored', message: `No settings configured for tab "${tab}"` });
+    const incomingTab = String(tab).trim().toLowerCase();
+    const side = ['L', 'R'].find(s => (settings.sheetTabs[s].sheetTabName || '').trim().toLowerCase() === incomingTab);
+    if (!side) {
+      return res.json({ status: 'ignored', message: `"${tab}" doesn't match either configured tab name (check the Sheet tab in the dashboard)` });
     }
+    const tabConfig = settings.sheetTabs[side];
 
     // Only act when the edited cell is the configured phone column
     if (editedColumn.toUpperCase() !== tabConfig.phoneCol.toUpperCase()) {
@@ -255,12 +326,12 @@ app.post('/api/sheet-edit', (req, res) => {
       return res.json({ status: 'invalid', message: 'Invalid phone: must be 11 digits starting with 01' });
     }
 
-    if (store.wasAlreadySent(tab, row)) {
+    if (store.wasAlreadySent(side, row)) {
       return res.json({ status: 'sent', message: 'Already sent previously' });
     }
 
     const serialRaw = values[tabConfig.serialCol];
-    const serial = logic.parseSerial(serialRaw, tab);
+    const serial = logic.parseSerial(serialRaw, side);
     if (!serial) {
       return res.json({ status: 'error', message: `Could not read serial from column ${tabConfig.serialCol}` });
     }
@@ -268,7 +339,7 @@ app.post('/api/sheet-edit', (req, res) => {
     const ushers = store.getUshers();
     const usher = logic.findUsherForSerial(serial, ushers);
     if (!usher) {
-      return res.json({ status: 'no-usher', message: `No usher range covers ${tab}${serial.num}` });
+      return res.json({ status: 'no-usher', message: `No usher range covers ${side}${serial.num}` });
     }
     if (!logic.isValidPhone(usher.phone)) {
       return res.json({ status: 'error', message: `Usher phone for ${usher.name} looks invalid` });
@@ -287,7 +358,8 @@ app.post('/api/sheet-edit', (req, res) => {
     enqueueMessage(logic.phoneToJid(usher.phone), text);
 
     store.appendSentLog({
-      tab,
+      tab: side,
+      sheetTabName: tab,
       row,
       serial: serialLabel,
       graduateId,

@@ -30,9 +30,11 @@ With the backend running, open in a browser:
 ```
 http://localhost:3000
 ```
-You'll see three tabs:
-- **Settings** — column mapping for the `L` and `R` sheet tabs (Serial, ID, Name, Department, Phone). Fill these in to match your real sheet.
+You'll see five tabs:
+- **Sheet** — paste the live Google Sheet link and the exact names of its two tabs (you can type these in once you know them, shortly before the event). "Test connection" confirms the sheet is reachable and previews a suggested column mapping.
+- **Settings** — column mapping (Serial, ID, Name, Department, Phone) for each side. Fill these in to match your real sheet, or apply the suggestion from the Sheet tab's test.
 - **Ushers** — add each usher's name, phone number, and range (e.g. `L108-L112`). Editable any time.
+- **WhatsApp** — shows the number currently linked (this is your default — it stays linked between runs). Use "Relink a different number" here as Plan B if you need to switch numbers or recover from a disconnect during the event, without touching the terminal.
 - **Activity** — a live feed of every message sent, refreshing automatically. This is what you'll watch during the event.
 
 The status dot in the top-right shows whether WhatsApp is currently connected.

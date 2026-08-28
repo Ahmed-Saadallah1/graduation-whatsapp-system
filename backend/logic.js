@@ -91,6 +91,48 @@ function guessFieldForHeader(header) {
   return null;
 }
 
+/** Pulls the spreadsheet ID out of any Google Sheets URL, or returns null. */
+function extractSheetId(url) {
+  const m = String(url || '').match(/\/d\/([a-zA-Z0-9-_]+)/);
+  return m ? m[1] : null;
+}
+
+/**
+ * Minimal CSV parser (handles quoted fields, escaped quotes, commas/newlines
+ * inside quotes). Good enough for reading a sheet's gviz CSV export - we
+ * don't want to pull in a whole dependency just for this.
+ */
+function parseCsv(text) {
+  const rows = [];
+  let row = [];
+  let field = '';
+  let inQuotes = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (inQuotes) {
+      if (c === '"') {
+        if (text[i + 1] === '"') { field += '"'; i++; }
+        else inQuotes = false;
+      } else {
+        field += c;
+      }
+    } else if (c === '"') {
+      inQuotes = true;
+    } else if (c === ',') {
+      row.push(field); field = '';
+    } else if (c === '\r') {
+      // ignore, \n handles the line break
+    } else if (c === '\n') {
+      row.push(field); field = '';
+      rows.push(row); row = [];
+    } else {
+      field += c;
+    }
+  }
+  if (field.length || row.length) { row.push(field); rows.push(row); }
+  return rows.filter(r => r.some(cell => String(cell).trim() !== ''));
+}
+
 module.exports = {
   normalizePhone,
   isValidPhone,
@@ -100,4 +142,6 @@ module.exports = {
   findUsherForSerial,
   indexToColumnLetter,
   guessFieldForHeader,
+  extractSheetId,
+  parseCsv,
 };

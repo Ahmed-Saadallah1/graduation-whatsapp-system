@@ -1,4 +1,4 @@
-﻿const fs = require('fs');
+const fs = require('fs');
 const path = require('path');
 
 const DATA_DIR = path.join(__dirname, 'data');
@@ -7,11 +7,32 @@ const USHERS_FILE = path.join(DATA_DIR, 'ushers.json');
 const SENTLOG_FILE = path.join(DATA_DIR, 'sentlog.json');
 
 const DEFAULT_SETTINGS = {
+  // Full "Anyone with the link can view" URL of the live Google Sheet being tracked.
+  sheetUrl: '',
   sheetTabs: {
-    L: { serialCol: 'A', idCol: 'B', nameCol: 'C', deptCol: 'D', phoneCol: 'E' },
-    R: { serialCol: 'A', idCol: 'B', nameCol: 'C', deptCol: 'D', phoneCol: 'E' },
+    // sheetTabName is the REAL tab name as it appears at the bottom of the Google
+    // Sheet (e.g. "Left" or "L108-Onwards") - you type this in shortly before the
+    // event once you know it. L/R below are just this app's internal side labels
+    // and never change.
+    L: { sheetTabName: 'L', serialCol: 'A', idCol: 'B', nameCol: 'C', deptCol: 'D', phoneCol: 'E' },
+    R: { sheetTabName: 'R', serialCol: 'A', idCol: 'B', nameCol: 'C', deptCol: 'D', phoneCol: 'E' },
   },
 };
+
+/** Fills in any missing keys from an older settings.json with current defaults. */
+function withDefaults(settings) {
+  const merged = {
+    sheetUrl: settings.sheetUrl || DEFAULT_SETTINGS.sheetUrl,
+    sheetTabs: {},
+  };
+  ['L', 'R'].forEach(side => {
+    merged.sheetTabs[side] = {
+      ...DEFAULT_SETTINGS.sheetTabs[side],
+      ...(settings.sheetTabs && settings.sheetTabs[side] ? settings.sheetTabs[side] : {}),
+    };
+  });
+  return merged;
+}
 
 function ensureDataDir() {
   if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
@@ -37,11 +58,12 @@ function writeJson(file, data) {
 
 // --- Settings ---
 function getSettings() {
-  return readJson(SETTINGS_FILE, DEFAULT_SETTINGS);
+  return withDefaults(readJson(SETTINGS_FILE, DEFAULT_SETTINGS));
 }
 function saveSettings(settings) {
-  writeJson(SETTINGS_FILE, settings);
-  return settings;
+  const merged = withDefaults(settings);
+  writeJson(SETTINGS_FILE, merged);
+  return merged;
 }
 
 // --- Ushers ---

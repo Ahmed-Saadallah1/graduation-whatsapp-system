@@ -1,11 +1,13 @@
-﻿# Apps Script Setup (Google Sheet side) — v2
+# Apps Script Setup (Google Sheet side) — v2
 
 Your Sheet stays completely untouched by this system. No extra tabs, no
 formatting, no restrictions. This script only watches for edits and forwards
 them to your backend dashboard, which holds all the real configuration.
 
-**Requirement:** your two data tabs must be named exactly **`L`** and **`R`**
-(the tab names at the bottom of the sheet). The script only watches those two.
+**No fixed tab-name requirement anymore.** This script forwards edits from any
+tab; your backend dashboard's **Sheet** tab is where you type in the real tab
+names (once you know them, shortly before the event) and it matches edits
+against those.
 
 ## 1. Install the script
 1. Open your Google Sheet.
@@ -22,8 +24,10 @@ them to your backend dashboard, which holds all the real configuration.
 
 ## 3. Do all real configuration in the dashboard
 Open your backend URL in a browser (e.g. `https://your-tunnel.trycloudflare.com` or `http://localhost:3000` if you're on the same machine). There you'll manage:
-- **Settings tab** — which column holds Serial / ID / Name / Department / Phone, separately for the `L` tab and the `R` tab (they can differ).
+- **Sheet tab** — paste the live Google Sheet link, type in the real names of its two tabs, and hit "Test connection" to confirm it's reachable and preview a suggested column mapping.
+- **Settings tab** — which column holds Serial / ID / Name / Department / Phone, separately for each side (they can differ).
 - **Ushers tab** — name, phone, and range (e.g. `L108-L112`) for each usher. Add, edit, or remove any time.
+- **WhatsApp tab** — shows your currently linked number, and a QR code to relink a different number as Plan B during the event.
 - **Activity tab** — a live feed of every message sent, for monitoring during the event.
 
 Nothing here needs to touch the Sheet again once it's set up.
