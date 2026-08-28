@@ -1,0 +1,737 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Graduation Notifier</title>
+<style>
+  :root {
+    --ink: #16181d;
+    --paper: #f7f6f3;
+    --panel: #ffffff;
+    --line: #e3e1db;
+    --muted: #6b6d73;
+    --accent: #1f6f54;
+    --accent-soft: #e4f2ec;
+    --danger: #b3432b;
+    --danger-soft: #fbe9e4;
+    --warn: #a5760f;
+    --warn-soft: #faf1de;
+    --mono: 'IBM Plex Mono', 'SFMono-Regular', Consolas, monospace;
+    --sans: 'IBM Plex Sans', -apple-system, 'Segoe UI', sans-serif;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--sans);
+    -webkit-font-smoothing: antialiased;
+  }
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 20px 28px;
+    border-bottom: 1px solid var(--line);
+    background: var(--panel);
+  }
+  .brand {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+  }
+  .brand .mark {
+    font-family: var(--mono);
+    font-size: 13px;
+    letter-spacing: 0.14em;
+    color: var(--accent);
+    border: 1px solid var(--accent);
+    padding: 3px 7px;
+    border-radius: 3px;
+  }
+  .brand h1 {
+    font-size: 18px;
+    font-weight: 600;
+    margin: 0;
+  }
+  .status-pill {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--muted);
+  }
+  .dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--danger);
+  }
+  .dot.on { background: var(--accent); }
+
+  nav {
+    display: flex;
+    gap: 4px;
+    padding: 0 28px;
+    background: var(--panel);
+    border-bottom: 1px solid var(--line);
+  }
+  nav button {
+    appearance: none;
+    background: none;
+    border: none;
+    padding: 14px 6px;
+    margin-right: 24px;
+    font-family: var(--sans);
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--muted);
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+  }
+  nav button.active {
+    color: var(--ink);
+    border-bottom-color: var(--accent);
+  }
+
+  main {
+    max-width: 880px;
+    margin: 0 auto;
+    padding: 32px 28px 80px;
+  }
+  .view { display: none; }
+  .view.active { display: block; }
+
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: 22px 24px;
+    margin-bottom: 20px;
+  }
+  .panel h2 {
+    font-size: 13px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--muted);
+    margin: 0 0 4px;
+  }
+  .panel .sub {
+    font-size: 13px;
+    color: var(--muted);
+    margin: 0 0 18px;
+  }
+
+  .field-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr 1fr 1fr;
+    gap: 10px;
+    margin-bottom: 10px;
+    align-items: end;
+  }
+  .field-row label {
+    display: block;
+    font-size: 11px;
+    color: var(--muted);
+    margin-bottom: 4px;
+    font-family: var(--mono);
+  }
+  input, select {
+    width: 100%;
+    padding: 8px 10px;
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    font-family: var(--mono);
+    font-size: 13px;
+    background: var(--paper);
+    color: var(--ink);
+  }
+  input:focus, select:focus {
+    outline: none;
+    border-color: var(--accent);
+  }
+
+  .tab-config {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+  }
+  .tab-config-block {
+    border: 1px solid var(--line);
+    border-radius: 5px;
+    padding: 16px;
+  }
+  .tab-config-block h3 {
+    font-family: var(--mono);
+    font-size: 13px;
+    margin: 0 0 12px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .side-chip {
+    display: inline-block;
+    width: 20px;
+    height: 20px;
+    line-height: 20px;
+    text-align: center;
+    border-radius: 4px;
+    background: var(--accent-soft);
+    color: var(--accent);
+    font-weight: 700;
+  }
+
+  button.primary {
+    background: var(--ink);
+    color: #fff;
+    border: none;
+    padding: 9px 16px;
+    border-radius: 4px;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    font-family: var(--sans);
+  }
+  button.primary:hover { background: #000; }
+  button.ghost {
+    background: none;
+    border: 1px solid var(--line);
+    padding: 7px 12px;
+    border-radius: 4px;
+    font-size: 12px;
+    cursor: pointer;
+    color: var(--muted);
+    font-family: var(--sans);
+  }
+  button.ghost:hover { border-color: var(--danger); color: var(--danger); }
+
+  table { width: 100%; border-collapse: collapse; }
+  th {
+    text-align: left;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--muted);
+    font-weight: 500;
+    padding: 8px 10px;
+    border-bottom: 1px solid var(--line);
+  }
+  td {
+    padding: 10px 10px;
+    border-bottom: 1px solid var(--line);
+    font-size: 13px;
+  }
+  td.mono, .range-tag { font-family: var(--mono); }
+  .range-tag {
+    background: var(--accent-soft);
+    color: var(--accent);
+    padding: 2px 7px;
+    border-radius: 3px;
+    font-size: 12px;
+  }
+  tr:last-child td { border-bottom: none; }
+
+  .empty {
+    text-align: center;
+    padding: 40px 20px;
+    color: var(--muted);
+    font-size: 13px;
+  }
+
+  .add-usher-form {
+    display: grid;
+    grid-template-columns: 2fr 2fr 1.5fr auto;
+    gap: 10px;
+    margin-top: 16px;
+    align-items: end;
+  }
+
+  .activity-row {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 12px 0;
+    border-bottom: 1px solid var(--line);
+  }
+  .activity-row:last-child { border-bottom: none; }
+  .activity-icon {
+    width: 26px; height: 26px;
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 13px;
+    flex-shrink: 0;
+    background: var(--accent-soft); color: var(--accent);
+  }
+  .activity-icon.fail { background: var(--danger-soft); color: var(--danger); }
+  .activity-main { flex: 1; }
+  .activity-main .who { font-size: 13px; font-weight: 500; }
+  .activity-main .what { font-size: 12px; color: var(--muted); font-family: var(--mono); }
+  .activity-time { font-size: 11px; color: var(--muted); font-family: var(--mono); white-space: nowrap; }
+
+  .dropzone {
+    border: 2px dashed var(--line);
+    border-radius: 6px;
+    padding: 36px 20px;
+    text-align: center;
+    cursor: pointer;
+    transition: border-color 0.15s, background 0.15s;
+  }
+  .dropzone:hover, .dropzone.dragover {
+    border-color: var(--accent);
+    background: var(--accent-soft);
+  }
+  .dropzone-icon { font-size: 28px; margin-bottom: 6px; }
+  .dropzone-text { font-size: 13px; color: var(--muted); }
+
+  .import-error {
+    margin-top: 16px;
+    padding: 12px 14px;
+    background: var(--danger-soft);
+    color: var(--danger);
+    border-radius: 4px;
+    font-size: 13px;
+  }
+  .import-tab-card {
+    margin-top: 20px;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: 18px 20px;
+  }
+  .import-tab-card h3 {
+    font-family: var(--mono);
+    font-size: 14px;
+    margin: 0 0 4px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .import-tab-card .row-count {
+    font-size: 12px;
+    color: var(--muted);
+    margin: 0 0 14px;
+  }
+  .mapping-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px 16px;
+    margin-bottom: 14px;
+  }
+  .mapping-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+  }
+  .mapping-row .field-name {
+    width: 130px;
+    color: var(--muted);
+    font-family: var(--mono);
+    font-size: 12px;
+    flex-shrink: 0;
+  }
+  .mapping-row select {
+    flex: 1;
+  }
+  .preview-table-wrap { overflow-x: auto; margin-top: 10px; }
+  .preview-table-wrap table { font-size: 12px; }
+  .apply-row { display: flex; justify-content: flex-end; margin-top: 12px; }
+
+  .save-row { display: flex; justify-content: flex-end; margin-top: 16px; }
+  .toast {
+    position: fixed;
+    bottom: 24px;
+    right: 24px;
+    background: var(--ink);
+    color: #fff;
+    padding: 10px 18px;
+    border-radius: 4px;
+    font-size: 13px;
+    opacity: 0;
+    transform: translateY(8px);
+    transition: all 0.2s ease;
+    pointer-events: none;
+  }
+  .toast.show { opacity: 1; transform: translateY(0); }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="brand">
+    <span class="mark">L/R</span>
+    <h1>Graduation Notifier</h1>
+  </div>
+  <div class="status-pill">
+    <span class="dot" id="statusDot"></span>
+    <span id="statusText">checking connection…</span>
+  </div>
+</header>
+
+<nav>
+  <button class="tab-btn active" data-view="import">Import</button>
+  <button class="tab-btn" data-view="settings">Settings</button>
+  <button class="tab-btn" data-view="ushers">Ushers</button>
+  <button class="tab-btn" data-view="activity">Activity</button>
+</nav>
+
+<main>
+
+  <!-- IMPORT -->
+  <section class="view active" id="view-import">
+    <div class="panel">
+      <h2>Import your sheet</h2>
+      <p class="sub">Drop your real spreadsheet here to preview its structure and auto-fill the column mapping — this doesn't upload data anywhere or replace the live Google Sheet, it just reads the layout. For best results, use a file with two tabs named exactly <code>L</code> and <code>R</code>.</p>
+
+      <div class="dropzone" id="dropzone">
+        <div class="dropzone-icon">📄</div>
+        <div class="dropzone-text">Drag a .xlsx or .csv file here, or click to browse</div>
+        <input type="file" id="fileInput" accept=".xlsx,.xls,.csv" style="display:none;" />
+      </div>
+
+      <div id="importResults"></div>
+    </div>
+  </section>
+
+  <!-- SETTINGS -->
+  <section class="view" id="view-settings">
+    <div class="panel">
+      <h2>Column mapping</h2>
+      <p class="sub">Tell the system which column holds what, for each sheet tab. This is the only setup needed on the data side — nothing gets added to the Sheet itself.</p>
+      <div class="tab-config" id="tabConfigContainer"></div>
+      <div class="save-row">
+        <button class="primary" onclick="saveSettings()">Save settings</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- USHERS -->
+  <section class="view" id="view-ushers">
+    <div class="panel">
+      <h2>Ushers</h2>
+      <p class="sub">Each usher covers a range like <code>L108-L112</code>. Ranges can be edited any time — changes apply to the next message sent.</p>
+      <table>
+        <thead>
+          <tr><th>Name</th><th>Phone</th><th>Range</th><th></th></tr>
+        </thead>
+        <tbody id="ushersTableBody"></tbody>
+      </table>
+      <div id="ushersEmpty" class="empty" style="display:none;">No ushers added yet.</div>
+
+      <div class="add-usher-form">
+        <div>
+          <label>Usher name</label>
+          <input id="newUsherName" placeholder="Jana Amer" />
+        </div>
+        <div>
+          <label>Phone (11 digits)</label>
+          <input id="newUsherPhone" placeholder="01012345678" />
+        </div>
+        <div>
+          <label>Range</label>
+          <input id="newUsherRange" placeholder="L108-L112" />
+        </div>
+        <button class="primary" onclick="addUsher()">Add</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ACTIVITY -->
+  <section class="view" id="view-activity">
+    <div class="panel">
+      <h2>Live activity</h2>
+      <p class="sub">Every message sent, most recent first. Refreshes automatically.</p>
+      <div id="activityList"></div>
+      <div id="activityEmpty" class="empty" style="display:none;">Nothing sent yet — activity will appear here the moment a graduate's phone number is typed into the Sheet.</div>
+    </div>
+  </section>
+
+</main>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const SIDES = ['L', 'R'];
+
+// ---------- Navigation ----------
+document.querySelectorAll('.tab-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById('view-' + btn.dataset.view).classList.add('active');
+  });
+});
+
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2200);
+}
+
+// ---------- Status ----------
+async function refreshStatus() {
+  try {
+    const res = await fetch('/api/status');
+    const data = await res.json();
+    const dot = document.getElementById('statusDot');
+    const text = document.getElementById('statusText');
+    if (data.whatsappReady) {
+      dot.classList.add('on');
+      text.textContent = 'WhatsApp connected' + (data.queueLength ? ` · ${data.queueLength} queued` : '');
+    } else {
+      dot.classList.remove('on');
+      text.textContent = 'WhatsApp not connected';
+    }
+  } catch {
+    document.getElementById('statusText').textContent = 'Backend unreachable';
+  }
+}
+
+// ---------- Settings ----------
+const FIELD_LABELS = [
+  ['serialCol', 'Serial column'],
+  ['idCol', 'Graduate ID column'],
+  ['nameCol', 'Graduate name column'],
+  ['deptCol', 'Department column'],
+  ['phoneCol', 'Phone column (trigger)'],
+];
+
+async function loadSettings() {
+  const res = await fetch('/api/settings');
+  const settings = await res.json();
+  const container = document.getElementById('tabConfigContainer');
+  container.innerHTML = '';
+  SIDES.forEach(side => {
+    const cfg = settings.sheetTabs[side] || {};
+    const block = document.createElement('div');
+    block.className = 'tab-config-block';
+    block.innerHTML = `
+      <h3><span class="side-chip">${side}</span> Tab "${side}"</h3>
+      ${FIELD_LABELS.map(([key, label]) => `
+        <div style="margin-bottom:10px;">
+          <label>${label}</label>
+          <input data-side="${side}" data-field="${key}" value="${cfg[key] || ''}" placeholder="e.g. A" />
+        </div>
+      `).join('')}
+    `;
+    container.appendChild(block);
+  });
+}
+
+async function saveSettings() {
+  const settings = { sheetTabs: {} };
+  SIDES.forEach(side => { settings.sheetTabs[side] = {}; });
+  document.querySelectorAll('#tabConfigContainer input').forEach(input => {
+    settings.sheetTabs[input.dataset.side][input.dataset.field] = input.value.trim().toUpperCase();
+  });
+  await fetch('/api/settings', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(settings),
+  });
+  showToast('Settings saved');
+}
+
+// ---------- Ushers ----------
+async function loadUshers() {
+  const res = await fetch('/api/ushers');
+  const ushers = await res.json();
+  const tbody = document.getElementById('ushersTableBody');
+  const empty = document.getElementById('ushersEmpty');
+  tbody.innerHTML = '';
+  empty.style.display = ushers.length ? 'none' : 'block';
+  ushers.forEach(u => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${u.name}</td>
+      <td class="mono">${u.phone}</td>
+      <td><span class="range-tag">${u.range}</span></td>
+      <td style="text-align:right;"><button class="ghost" onclick="deleteUsher('${u.id}')">Remove</button></td>
+    `;
+    tbody.appendChild(tr);
+  });
+}
+
+async function addUsher() {
+  const name = document.getElementById('newUsherName').value.trim();
+  const phone = document.getElementById('newUsherPhone').value.trim();
+  const range = document.getElementById('newUsherRange').value.trim();
+  if (!name || !phone || !range) { showToast('Fill in all three fields'); return; }
+
+  const res = await fetch('/api/ushers', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name, phone, range }),
+  });
+  if (!res.ok) {
+    const err = await res.json();
+    showToast(err.error || 'Could not add usher');
+    return;
+  }
+  document.getElementById('newUsherName').value = '';
+  document.getElementById('newUsherPhone').value = '';
+  document.getElementById('newUsherRange').value = '';
+  showToast('Usher added');
+  loadUshers();
+}
+
+async function deleteUsher(id) {
+  await fetch('/api/ushers/' + id, { method: 'DELETE' });
+  loadUshers();
+}
+
+// ---------- Activity ----------
+async function loadActivity() {
+  const res = await fetch('/api/activity');
+  const log = await res.json();
+  const list = document.getElementById('activityList');
+  const empty = document.getElementById('activityEmpty');
+  empty.style.display = log.length ? 'none' : 'block';
+  list.innerHTML = log.map(e => `
+    <div class="activity-row">
+      <div class="activity-icon ${e.status !== 'sent' ? 'fail' : ''}">${e.status === 'sent' ? '✓' : '!'}</div>
+      <div class="activity-main">
+        <div class="who">${e.graduateName || '—'} → ${e.usherName || '—'}</div>
+        <div class="what">${e.serial || ''} · ${e.tab || ''} row ${e.row || ''}</div>
+      </div>
+      <div class="activity-time">${new Date(e.timestamp).toLocaleTimeString()}</div>
+    </div>
+  `).join('');
+}
+
+// ---------- Import ----------
+const FIELD_OPTIONS = [
+  ['', '— Not used —'],
+  ['serialCol', 'Serial'],
+  ['idCol', 'Graduate ID'],
+  ['nameCol', 'Graduate name'],
+  ['deptCol', 'Department'],
+  ['phoneCol', 'Phone (trigger)'],
+];
+
+const dropzone = document.getElementById('dropzone');
+const fileInput = document.getElementById('fileInput');
+
+dropzone.addEventListener('click', () => fileInput.click());
+dropzone.addEventListener('dragover', e => { e.preventDefault(); dropzone.classList.add('dragover'); });
+dropzone.addEventListener('dragleave', () => dropzone.classList.remove('dragover'));
+dropzone.addEventListener('drop', e => {
+  e.preventDefault();
+  dropzone.classList.remove('dragover');
+  if (e.dataTransfer.files.length) handleImportFile(e.dataTransfer.files[0]);
+});
+fileInput.addEventListener('change', () => {
+  if (fileInput.files.length) handleImportFile(fileInput.files[0]);
+});
+
+async function handleImportFile(file) {
+  const resultsEl = document.getElementById('importResults');
+  resultsEl.innerHTML = '<p class="sub">Reading file…</p>';
+
+  const formData = new FormData();
+  formData.append('file', file);
+
+  try {
+    const res = await fetch('/api/import', { method: 'POST', body: formData });
+    const data = await res.json();
+
+    if (!res.ok) {
+      resultsEl.innerHTML = `<div class="import-error">${data.error || 'Could not read that file.'}</div>`;
+      return;
+    }
+
+    renderImportResults(data);
+  } catch (err) {
+    resultsEl.innerHTML = `<div class="import-error">Upload failed: ${err.message}</div>`;
+  }
+}
+
+function renderImportResults(data) {
+  const resultsEl = document.getElementById('importResults');
+  const tabs = Object.keys(data.detectedTabs || {});
+
+  if (!tabs.length) {
+    let msg = `No tabs named "L" or "R" were found in <strong>${data.fileName}</strong>.`;
+    if (data.otherSheetNames && data.otherSheetNames.length) {
+      msg += ` Found instead: ${data.otherSheetNames.map(n => `<code>${n}</code>`).join(', ')}. Rename the relevant tabs to exactly <code>L</code> and <code>R</code> and try again.`;
+    }
+    resultsEl.innerHTML = `<div class="import-error">${msg}</div>`;
+    return;
+  }
+
+  resultsEl.innerHTML = tabs.map(side => {
+    const tab = data.detectedTabs[side];
+    const mappingRows = FIELD_OPTIONS.filter(([key]) => key).map(([key, label]) => {
+      const suggestedCol = tab.suggestedMapping[key] || '';
+      const optionsHtml = tab.headers.map((header, i) => {
+        const colLetter = String.fromCharCode(65 + i); // fine up to column Z for preview purposes
+        const selected = colLetter === suggestedCol ? 'selected' : '';
+        return `<option value="${colLetter}" ${selected}>${colLetter} — "${header}"</option>`;
+      }).join('');
+      return `
+        <div class="mapping-row">
+          <span class="field-name">${label}</span>
+          <select data-side="${side}" data-field="${key}">
+            <option value="">— none —</option>
+            ${optionsHtml}
+          </select>
+        </div>
+      `;
+    }).join('');
+
+    const previewRows = tab.sampleRows.slice(0, 3).map(row =>
+      `<tr>${tab.headers.map((_, i) => `<td>${row[i] ?? ''}</td>`).join('')}</tr>`
+    ).join('');
+
+    return `
+      <div class="import-tab-card" data-tab-card="${side}">
+        <h3><span class="side-chip">${side}</span> Tab "${side}" detected</h3>
+        <p class="row-count">${tab.rowCount} data row${tab.rowCount === 1 ? '' : 's'} found</p>
+        <div class="mapping-grid">${mappingRows}</div>
+        <div class="preview-table-wrap">
+          <table>
+            <thead><tr>${tab.headers.map(h => `<th>${h}</th>`).join('')}</tr></thead>
+            <tbody>${previewRows}</tbody>
+          </table>
+        </div>
+        <div class="apply-row">
+          <button class="primary" onclick="applyImportMapping('${side}')">Apply to Settings</button>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+async function applyImportMapping(side) {
+  const card = document.querySelector(`[data-tab-card="${side}"]`);
+  const settings = await (await fetch('/api/settings')).json();
+  if (!settings.sheetTabs[side]) settings.sheetTabs[side] = {};
+
+  card.querySelectorAll('select').forEach(select => {
+    settings.sheetTabs[side][select.dataset.field] = select.value;
+  });
+
+  await fetch('/api/settings', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(settings),
+  });
+
+  showToast(`Settings updated for tab "${side}"`);
+  loadSettings();
+}
+
+// ---------- Init ----------
+loadSettings();
+loadUshers();
+loadActivity();
+refreshStatus();
+setInterval(refreshStatus, 5000);
+setInterval(loadActivity, 4000);
+</script>
+
+</body>
+</html>

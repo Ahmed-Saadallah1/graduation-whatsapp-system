@@ -1,0 +1,18 @@
+{
+  "sheetTabs": {
+    "L": {
+      "serialCol": "A",
+      "idCol": "B",
+      "nameCol": "C",
+      "deptCol": "D",
+      "phoneCol": "E"
+    },
+    "R": {
+      "serialCol": "A",
+      "idCol": "B",
+      "nameCol": "C",
+      "deptCol": "D",
+      "phoneCol": "E"
+    }
+  }
+}
