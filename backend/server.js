@@ -58,12 +58,13 @@ async function processQueue() {
   processing = false;
 }
 
-function formatMessage({ usherName, graduateId, graduateName, department, serial }) {
+function formatMessage({ usherName, graduateId, graduateName, department, serial, phone }) {
   let msg = `🎓 New graduate for you, ${usherName}:\n\n`;
   msg += `Serial: ${serial}\n`;
   msg += `ID: ${graduateId}\n`;
   msg += `Name: ${graduateName}\n`;
   if (department) msg += `Department: ${department}\n`;
+  if (phone) msg += `Phone: ${phone}\n`;
   return msg;
 }
 
@@ -354,7 +355,7 @@ app.post('/api/sheet-edit', (req, res) => {
     const department = tabConfig.deptCol ? values[tabConfig.deptCol] : '';
     const serialLabel = `${serial.side}${serial.num}`;
 
-    const text = formatMessage({ usherName: usher.name, graduateId, graduateName, department, serial: serialLabel });
+    const text = formatMessage({ usherName: usher.name, graduateId, graduateName, department, serial: serialLabel, phone });
     enqueueMessage(logic.phoneToJid(usher.phone), text);
 
     store.appendSentLog({
@@ -378,13 +379,13 @@ app.post('/api/sheet-edit', (req, res) => {
 
 // Manual test endpoint - lets you send a one-off message without the Sheet
 app.post('/send', (req, res) => {
-  const { usherPhone, usherName, graduateId, graduateName, department, serial } = req.body || {};
+  const { usherPhone, usherName, graduateId, graduateName, department, serial, phone } = req.body || {};
   if (!isReady) return res.status(503).json({ error: 'WhatsApp not connected yet' });
   if (!usherPhone || !usherName || !graduateId || !graduateName || !serial) {
     return res.status(400).json({ error: 'Missing required fields' });
   }
   const jid = usherPhone.includes('@s.whatsapp.net') ? usherPhone : `${usherPhone}@s.whatsapp.net`;
-  enqueueMessage(jid, formatMessage({ usherName, graduateId, graduateName, department, serial }));
+  enqueueMessage(jid, formatMessage({ usherName, graduateId, graduateName, department, serial, phone }));
   res.status(200).json({ status: 'queued' });
 });
 
