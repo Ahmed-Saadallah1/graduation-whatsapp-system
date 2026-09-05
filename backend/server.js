@@ -70,7 +70,16 @@ function formatMessage({ usherName, graduateId, graduateName, department, serial
 
 async function startWhatsApp() {
   try {
-    const { state, saveCreds } = await useMultiFileAuthState('auth');
+    // FIX: was useMultiFileAuthState('auth') - a path *relative to the
+    // process's current working directory*, which is not necessarily
+    // backend/. relinkWhatsApp() below deletes the absolute AUTH_DIR, so a
+    // mismatch here meant the session Baileys actually reads/writes could
+    // silently differ from the one "Relink" clears - causing sessions that
+    // don't restore on restart, or stale/conflicting session files that
+    // trigger repeated disconnects. Using AUTH_DIR everywhere makes the two
+    // always point at the same folder regardless of where `node` is launched
+    // from.
+    const { state, saveCreds } = await useMultiFileAuthState(AUTH_DIR);
     sock = makeWASocket({ auth: state, logger: pino({ level: 'silent' }) });
     sock.ev.on('creds.update', saveCreds);
 
@@ -91,8 +100,16 @@ async function startWhatsApp() {
       if (connection === 'close') {
         isReady = false;
         linkedNumber = null;
-        const shouldReconnect = lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut;
-        console.log('Connection closed.', shouldReconnect ? 'Reconnecting...' : 'Logged out - scan a new QR code (dashboard "WhatsApp" tab) to relink.');
+        // FIX: surface the actual status code so disconnect causes are
+        // visible in the logs instead of just "closed" - e.g. 401
+        // (loggedOut), 440 (conflict - opened elsewhere/another instance),
+        // 428 (connection closed), 515 (restart required after pairing).
+        const statusCode = lastDisconnect?.error?.output?.statusCode;
+        const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
+        console.log(
+          `Connection closed (code: ${statusCode ?? 'unknown'}).`,
+          shouldReconnect ? 'Reconnecting...' : 'Logged out - scan a new QR code (dashboard "WhatsApp" tab) to relink.'
+        );
         if (shouldReconnect) setTimeout(startWhatsApp, 3000);
       }
     });
